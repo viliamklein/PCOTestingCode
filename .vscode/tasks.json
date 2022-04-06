@@ -1,0 +1,126 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build debug",
+			"dependsOn":[
+				"makeDebug",
+				// "setSISOenv"
+			]
+		},
+		{
+			"label": "setSISOenv",
+			"type": "shell",
+			"command": "source",
+			"args": [
+				"/opt/siso/setup-siso-env.sh",
+			]
+		},
+		{
+			"label": "makeDebug",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"debug",
+			],
+			"problemMatcher": "$gcc",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "shell",
+			"label": "make",
+			"command": "make",
+			"args": [
+				"all",
+			],
+			"problemMatcher": "$gcc",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "shell",
+			"label": "make debug",
+			"command": "make",
+			"args": [
+				"debug",
+			],
+			"problemMatcher": "$gcc",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "shell",
+			"label": "make clean",
+			"command": "make",
+			"args": [
+				"clean",
+			],
+			"problemMatcher": "$gcc",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "shell",
+			"label": "g++ build active file with debug",
+			"command": "/usr/bin/g++",
+			"args": [
+				"-g",
+				"${file}",
+				"src/*.cpp",
+				"-o",
+				"${workspaceFolder}/build/RTTestVN300_debug",
+				"/home/viliam/sources/vnproglib-1.1.5.0/cpp/build/bin/libvncxx.a",
+				"-I/home/viliam/sources/vnproglib-1.1.5.0/cpp/include/",
+				"-I/home/viliam/sources/websocketpp/websocketpp/",
+				"-I${workspaceFolder}/lib/",
+				"-lpthread"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "shell",
+			"label": "g++ build without debug",
+			"command": "/usr/bin/g++",
+			"args": [
+				"-Wall",
+				"-O1",
+				"${file}",
+				"-o",
+				"${workspaceFolder}/build/RTTestVN300",
+				"/home/viliam/sources/vnproglib-1.1.5.0/cpp/build/bin/libvncxx.a",
+				"-I/home/viliam/sources/vnproglib-1.1.5.0/cpp/include/",
+				"-I/home/viliam/sources/websocketpp/websocketpp/",
+				"-I${workspaceFolder}/lib/",
+				"-lpthread"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		}
+	]
+}
