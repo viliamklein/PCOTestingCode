@@ -23,7 +23,7 @@
                     "value": "/opt/siso/genicam/bin/Linux64_x64:/opt/siso/lib64:/opt/siso/lib"
                 }
             ],
-            "externalConsole": true,
+            "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
                 {

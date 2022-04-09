@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <sstream>
 
 #include "tsPCO.h"
 // extern "C"{
@@ -38,14 +39,9 @@ class PCOcam
     
     DWORD err = 0;
     std::string errMsg;
-    CPco_com* cam1;
-    CPco_com* cam2;
-    CPco_com* camera;
-    CPco_Log pcoCamLog;
 
-    CPco_grab_clhs *threadGrab;
-    CPco_grab_clhs *grabCam1;
-    CPco_grab_clhs *grabCam2;
+    CPco_com* camera;
+    // CPco_Log pcoCamLog;
     CPco_grab_clhs *grabber;
 
     WORD camtype;
@@ -61,8 +57,10 @@ class PCOcam
     
     CCambuf CbufDefault[2];
     CCambuf CbufHalf[2];
-    std::vector<frameBuffer *> picbuffers;
-
+    std::vector<frameBuffer > picBuf2048;
+    std::vector<frameBuffer > picBuf1024;
+    std::vector<frameBuffer > * picBuf;
+    int numBufs = 100;
     
     DWORD exp_time = 1000;
     DWORD delay_time = 0;

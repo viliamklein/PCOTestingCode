@@ -4,6 +4,9 @@ PCOcam::~PCOcam(){
 
     grabber->Close_Grabber();
     camera->Close_Cam();
+
+    std::cout << "Closed all CAM related things\n";
+    std::cout.flush();
     
 }
 
@@ -16,58 +19,36 @@ void PCOcam::processErrVal(){
 
 PCOcam::PCOcam(int camNumber){
 
-    using namespace std::chrono_literals;
+    // using namespace std::chrono_literals;
 
-    DWORD logLvL = 0x0000F0FF;
-    pcoCamLog.set_logbits(logLvL);
+    // DWORD logLvL = 0x0000F0FF;
+    // DWORD logLvL = 0;
+    std::stringstream ss;
+    ss << "PCOLogCam_" << camNumber;
+    std::string logname(ss.str());
+    std::cout << ss.str() << std::endl;
+    // std::string logname("pcoLogCam" + camNumber);
+    // pcoCamLog = CPco_Log(logname.c_str());
+    // pcoCamLog.set_logbits(logLvL);
 
     // Make new cam object
     camera = new CPco_com_clhs();
     if(camera==NULL)
     {
         // printf("ERROR: Cannot create camera object\n");
-        pcoCamLog.writelog(1, "ERROR: Cannot create camera object");
+        // pcoCamLog.writelog(1, "ERROR: Cannot create camera object");
         throw std::runtime_error("Camera is NULL");
     }
-    if(logLvL>0) camera->SetLog(&pcoCamLog);
+    // if(logLvL>0) camera->SetLog(&pcoCamLog);
 
     // Opening cam object
-    std::cout << "Opening cam\n\n";
-    // err=camera->Open_Cam(camNumber);
-
-    // CPco_com_clhs cam();
-    CPco_com * cam = new CPco_com_clhs();
-    err = cam->GetConnectionStatus();
+    err = camera->Open_Cam(camNumber);
     if(err!=PCO_NOERROR)
     {
         // printf("ERROR: 0x%x in Open_Cam\n",err);
         errMsg = printErrorMessage(err);
-        delete camera;
         throw std::runtime_error(errMsg);
     }
-
-    cam1 = new CPco_com_clhs();
-    cam2 = new CPco_com_clhs();
-    if(logLvL>0) cam1->SetLog(&pcoCamLog);
-    if(logLvL>0) cam2->SetLog(&pcoCamLog);
-
-    err=cam1->Open_Cam(1);
-    err=cam1->PCO_GetCameraType(&camtype, &serialnumber);
-    std::this_thread::sleep_for(100ms);
-    grabCam1 = new CPco_grab_clhs((CPco_com_clhs*) cam1);
-    err = grabCam1->Open_Grabber(1);
-    std::this_thread::sleep_for(100ms);
-
-    err = cam2->Open_Cam(0);
-
-    if(err!=PCO_NOERROR)
-    {
-        // printf("ERROR: 0x%x in Open_Cam\n",err);
-        errMsg = printErrorMessage(err);
-        delete camera;
-        throw std::runtime_error(errMsg);
-    }
-    std::this_thread::sleep_for(500ms);
 
     // Get camera type
     err=camera->PCO_GetCameraType(&camtype, &serialnumber);
@@ -79,15 +60,12 @@ PCOcam::PCOcam(int camNumber){
         delete camera;
         throw std::runtime_error(errMsg);
     }
-    std::this_thread::sleep_for(500ms);
 
-    // get cam grabber
-    
-    std::cout << "Opening grabber\n\n";
+    // Get cam grabber
     grabber = new CPco_grab_clhs((CPco_com_clhs*) camera);
-    if(logLvL>0) grabber->SetLog(&pcoCamLog);
+    // if(logLvL>0) grabber->SetLog(&pcoCamLog);
 
-    err = grabber->Open_Grabber(0);
+    err = grabber->Open_Grabber(camNumber);
     if(err!=PCO_NOERROR)
     {
         // printf("ERROR: 0x%x in Open_Grabber",err);
@@ -98,7 +76,6 @@ PCOcam::PCOcam(int camNumber){
         
         throw std::runtime_error(errMsg);
     }
-    std::this_thread::sleep_for(500ms);
 
     // set some camera and grabber params
     err=grabber->Set_Grabber_Timeout(PicTimeOut);
@@ -108,7 +85,7 @@ PCOcam::PCOcam(int camNumber){
     err=camera->PCO_GetCameraDescriptor(&description);
     // if(err!=PCO_NOERROR) printf("PCO_GetCameraDescriptor() Error 0x%x\n",err);
     if(err!=PCO_NOERROR) processErrVal();
-    std::this_thread::sleep_for(500ms);
+    // std::this_thread::sleep_for(500ms);
 
     err=camera->PCO_GetInfo(1,infostr,sizeof(infostr));
     // if(err!=PCO_NOERROR) printf("PCO_GetInfo() Error 0x%x\n",err);
@@ -119,7 +96,7 @@ PCOcam::PCOcam(int camNumber){
         // printf("Camera Typ is : 0x%04x\n",camtype);
         // printf("Camera Serial : %d\n",serialnumber);
 
-        std::this_thread::sleep_for(500ms);
+        // std::this_thread::sleep_for(500ms);
         std::cout << "Camera Name is: " << (std::string) infostr << "\n";
         std::cout << "Camera Typ is: " << camtype << "\n";
         std::cout << "Camera Serial: " << serialnumber << "\n";
@@ -226,12 +203,20 @@ PCOcam::PCOcam(int camNumber){
     //     printf("Cbuf[%d] allocated width %d,height %d\n",ii,CbufDefault[ii].Get_actwidth(),CbufDefault[ii].Get_actheight());
     // }
 
-    for(int ii=0; ii<10; ii++) {
-        picbuffers.push_back(new frameBuffer);
-        picbuffers[ii]->picbuf = (WORD*)malloc(width*height*sizeof(WORD));
+    picBuf1024.resize(numBufs, frameBuffer());
+    picBuf2048.resize(numBufs, frameBuffer());
+    for(int ii=0; ii<numBufs; ii++) {
+    //     frameBuffer imageFrame;
+    //     picBuf2048.push_back(imageFrame);
+        picBuf2048[ii].picbuf = (WORD*)malloc(2048*2048*sizeof(WORD));
+        
+    //     picBuf1024.push_back(imageFrame);
+        picBuf1024[ii].picbuf = (WORD*)malloc(1024*1024*sizeof(WORD));
     }
 
-    //
+    if(width == 2048) picBuf = &picBuf2048;
+    else if(width == 1024) picBuf = &picBuf1024;
+    
 }
 
 void PCOcam::getTemperature(){
