@@ -11,7 +11,7 @@ CPCODIR     = /home/viliam/PCO/pco_camera/pco_common/pco_classes
 CPCODIRCLHS = /home/viliam/PCO/pco_camera/pco_clhs/pco_classes
 PCOCLHSDIR  = /home/viliam/PCO/pco_camera/pco_clhs/pco_clhs_common
 
-CFLAGS += -Wall -DLINUX -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
+CFLAGS += -std=c++2a -Wall -DLINUX -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
 LFLAGS += -L$(PCOLIBDIR)
 CXXCMD = gcc
 
@@ -31,7 +31,7 @@ HEADERS = 	$(CPCODIR)/Cpco_com.h \
 CPPFLAGS := -Iinclude
 
 PCOLIB  = -lpcodisp -lpcofile -lpcocam_clhs -lpcoclhs
-LIBADD  = -pthread -lrt -ldl -lX11 -lXext
+LIBADD  = -lInfluxDB -lcurl -pthread -lrt -ldl -lX11 -lXext
 
 #==============================================#
 

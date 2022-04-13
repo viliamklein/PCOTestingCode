@@ -1,9 +1,104 @@
 #include "pcoCamTS.h"
 
+void pcoMGRThread(std::unique_ptr<mgrThreadLock> lock, std::future<void> exitSignal){
+
+    char outputBuffer[256];
+    std::stringstream mgrStream;
+    std::string mgrStringData;
+    bool start = true;
+
+    const std::string mgrCommandString("/home/viliam/PCO/pco_camera/pco_clhs/bin/./pco_clhs_mgr -g0x00010000");
+    // Open pipe to file
+    FILE* pipe = popen(mgrCommandString.c_str(), "r");
+    if (!pipe) throw std::runtime_error("MGR PIPE failed to open");;
+
+    // read till end of process:
+    while ((!feof(pipe)) && (exitSignal.wait_for(std::chrono::microseconds(1)) == std::future_status::timeout)) {
+
+        // use buffer to read and add to result
+        if (fgets(outputBuffer, 256, pipe) != NULL)
+            mgrStream << outputBuffer;
+        
+        // std::cout << "Here\n";
+
+        mgrStringData = mgrStream.str();
+        mgrStream.str(std::string());
+
+        if(start){
+
+            std::cout << mgrStringData;
+
+            if(mgrStringData.find("pco_clhs_mgr is already started"))
+                throw std::runtime_error("mgr already running");
+
+            std::size_t dotPos = mgrStringData.find("....");
+            if(dotPos != std::string::npos){
+
+                start = false;
+                std::cout << "MGR status output: \n\n" 
+                          << mgrStringData.substr(0, dotPos) << std::endl;
+                
+                {
+                    std::lock_guard<std::mutex> lk{lock->mm};
+                    lock->mgrRunning = true;
+                }
+
+            }
+        }
+   }
+
+   pclose(pipe);
+
+}
+
+int tempTimeoutTask(int delay){
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    return 1;
+}
+
+void pcoControlThread(PCOcam * camObj, camThreadSettings settings, std::future<void> exitSignal){
+
+    std::cout << "PCO cam thread\n";
+
+    // int tempDelayTimeout = settings.tempReadTimeout;
+    auto tempTimeout = std::async(std::launch::async, tempTimeoutTask, settings.tempReadTimeout);
+    
+    while (exitSignal.wait_for(std::chrono::microseconds(1)) == std::future_status::timeout){
+
+        // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        // std::cout << "Tick\n";
+
+        // auto tempRead
+        
+        //==============================================//
+        // Check if it's time to read PCO temperature. 
+        //==============================================//
+        auto status = tempTimeout.wait_for(std::chrono::milliseconds(0));
+        if (status == std::future_status::ready){
+
+            tempTimeout = std::async(std::launch::async, tempTimeoutTask, settings.tempReadTimeout);
+            camObj->getTemperature();
+            camObj->camera->PCO_GetHealthStatus(&camObj->warnings,
+                                                &camObj->errors,
+                                                &camObj->camStatusVal);
+            {
+                std::lock_guard<std::mutex> lck(camObj->curlWriteMut);
+                camObj->curlWriteReady = true;
+            }
+        }
+    }
+
+    std::cout << "PCO thread Done" << std::endl;
+
+}
+
 PCOcam::~PCOcam(){
 
     grabber->Close_Grabber();
     camera->Close_Cam();
+
+    exitSignalCurlThread.set_value();
+    curlTempWriterThread.join();
 
     std::cout << "Closed all CAM related things\n";
     std::cout.flush();
@@ -17,8 +112,93 @@ void PCOcam::processErrVal(){
 
 }
 
+// void PCOcam::curlInfluxWriter(int camNumber, std::future<void> exitSignal){
+void PCOcam::curlInfluxWriter(int camNumber){
+
+    
+    CURL *curl;
+    CURLcode res;
+
+    std::string urldb = "http://localhost:8086/api/v2/write?org=thaispice&bucket=vn300Testing&precision=ns";
+    std::string authHeader = "Authorization: Token FzANVq9O0CVYN4iHQivNgchUsZhM6HbomP0HuXHKuv5Xp11Xcyb5pEIuZbXnpOqSGfqEc03eel_cS9euGBTPxw==";
+    std::string contHeader = "Content-Type: text/plain; charset=utf-8";
+    std::string acceptHeader = "Accept: application/json";
+    struct curl_slist* headers = NULL;
+
+    // data strings for line protocol writing
+    // std::string measTags = "PCOcam1,testdata=true ";
+    std::stringstream line;
+    std::string fullDataStr;
+    line << "PCOCam" << camNumber << ",testdata=true";
+    std::string measTags = line.str();
+    line.str(std::string());
+
+
+    while (futCurl.wait_for(std::chrono::microseconds(1)) == std::future_status::timeout){
+
+        std::unique_lock<std::mutex> lck(curlWriteMut);
+        if(curlCond.wait_for(lck, std::chrono::microseconds(1), [this]{return curlWriteReady;})){
+            // std::cout << "Curl writing data\n";
+            curlWriteReady = false;
+
+            auto now = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now());
+            line << measTags
+                 << " ccdtemp=" << ccdtemp/10.0
+                 << ",camtemp=" << camtemp
+                 << ",ptemp=" << pstemp
+                 << ",warningsVal=" << warnings
+                 << ",errorsVal=" << errors
+                 << ",camStatusVal=" << camStatusVal
+                 << " " << now.time_since_epoch().count() << "\n";
+                
+            // std::cout << line.str() << std::endl;
+            fullDataStr = line.str();
+            line.str("");
+            line.clear();
+            // std::cout << fullDataStr;
+            
+            curl = curl_easy_init();
+            if(curl){
+
+                headers = curl_slist_append(headers, authHeader.c_str());
+                headers = curl_slist_append(headers, contHeader.c_str());
+                headers = curl_slist_append(headers, acceptHeader.c_str());
+
+                curl_easy_setopt(curl, CURLOPT_URL, urldb.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, fullDataStr.c_str());
+
+                /* Perform the request, res will get the return code */ 
+                res = curl_easy_perform(curl);
+
+                /* Check for errors */ 
+                if(res != CURLE_OK)
+                fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                        curl_easy_strerror(res));
+
+                /* always cleanup */ 
+                curl_easy_cleanup(curl);
+                headers = NULL;
+
+            }
+
+        }
+
+    }
+
+    curl_global_cleanup();
+
+    std::cout << "PCO Curl Thread Done\n";
+
+}
+
+
 PCOcam::PCOcam(int camNumber){
 
+    futCurl = exitSignalCurlThread.get_future();
+    curlTempWriterThread = std::thread(&PCOcam::curlInfluxWriter, this, camNumber);
+    // std::thread PCOCamThread()
+    
     // using namespace std::chrono_literals;
 
     // DWORD logLvL = 0x0000F0FF;

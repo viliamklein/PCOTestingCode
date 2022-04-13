@@ -14,10 +14,12 @@
 #include <chrono>
 #include <thread>
 
+// #include <InfluxDBFactory.h>
+
 #define PCO_ERRT_H_CREATE_OBJECT
 // #define _MSC_VER 1100
 
-// #include "tsPCO.h"
+#include "tsPCO.h"
 #include "pcoCamTS.h"
 
 std::mutex frameStart, frameEnd;
@@ -32,36 +34,68 @@ std::string exec(const char* cmd);
 
 int main(int argc, char *argv[]){
 
-    PCOcam cam0(0);
-    PCOcam cam1(1);
+    
+    //setup up PCO MGR THREAD with future/promise kill pattern
+    std::promise<void> exitSignalPCO_MGR;
+    std::future<void> futPCOMGR = exitSignalPCO_MGR.get_future();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    mgrThreadLock mgrLock;
+    mgrLock.mgrRunning = true;
+    std::unique_ptr<mgrThreadLock> lockPtr(&mgrLock);
+    // std::thread pcoMGR( pcoMGRThread, std::move(lockPtr), std::move(futPCOMGR));
 
-    cam0.camera->PCO_SetRecordingState(1);
-    cam0.err = cam0.grabber->Start_Acquire();
+    // std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+    std::cout << "Main thread waiting for mgr\n";
+    std::unique_lock<std::mutex> lk{mgrLock.mm};
+    while (!mgrLock.mgrRunning) mgrLock.cond.wait(lk);
+    
+    // PCOcam cam0(0);
+    PCOcam cam1(0);
+    camThreadSettings cam1Settings;
+    cam1Settings.tempReadTimeout = 5000;
 
-    cam1.camera->PCO_SetRecordingState(1);
-    cam1.err = cam1.grabber->Start_Acquire();
+    //setup up PCO thread with future/promise kill pattern
+    std::promise<void> exitSignalPCO1;
+    std::future<void> futPCOThread1 = exitSignalPCO1.get_future();
+    std::thread pcoThreadCam1(pcoControlThread, &cam1, cam1Settings, std::move(futPCOThread1));
 
-    if(cam0.err!=PCO_NOERROR) cam0.processErrVal();
+
+    // std::this_thread::sleep_for(std::chrono::milliseconds(26000));
+
+    std::string line;
+    std::getline(std::cin, line); 
+
+    // cam0.camera->PCO_SetRecordingState(1);
+    // cam0.err = cam0.grabber->Start_Acquire();
+
+    // cam1.camera->PCO_SetRecordingState(1);
+    // cam1.err = cam1.grabber->Start_Acquire();
+
+    // if(cam0.err!=PCO_NOERROR) cam0.processErrVal();
 
     // cam1.picBuf1024[0].picbuf;
     // cam0.(*picBuf)[0].picbuf;
     // cam0.picBuf->at(0).picbuf;
 
-    for(int ii = 0; ii<1000; ii++){
-        cam0.err = cam0.grabber->Wait_For_Next_Image(cam0.picBuf->at(0).picbuf, 500);
-        cam1.err = cam1.grabber->Wait_For_Next_Image(cam1.picBuf->at(0).picbuf, 500);
-        std::cout << ii << "\r";
-        std::cout.flush();
-    }
-    std::cout << "\n" << std::endl;
+    // for(int ii = 0; ii<1000; ii++){
+    //     cam0.err = cam0.grabber->Wait_For_Next_Image(cam0.picBuf->at(0).picbuf, 500);
+    //     cam1.err = cam1.grabber->Wait_For_Next_Image(cam1.picBuf->at(0).picbuf, 500);
+    //     std::cout << ii << "\r";
+    //     std::cout.flush();
+    // }
+    // std::cout << "\n" << std::endl;
     
-    cam0.err = cam0.grabber->Stop_Acquire();
-    cam0.camera->PCO_SetRecordingState(0);
+    // cam0.err = cam0.grabber->Stop_Acquire();
+    // cam0.camera->PCO_SetRecordingState(0);
     
-    cam1.err = cam1.grabber->Stop_Acquire();
-    cam1.camera->PCO_SetRecordingState(0);
+    // cam1.err = cam1.grabber->Stop_Acquire();
+    // cam1.camera->PCO_SetRecordingState(0);
+    
+    exitSignalPCO1.set_value();
+    pcoThreadCam1.join();
+
+    exitSignalPCO_MGR.set_value();
+    // pcoMGR.join();
 
     std::cout << "Done\n";
 

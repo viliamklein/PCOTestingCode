@@ -6,6 +6,9 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+// #include <fmt/format.h>
+#include <future>
+#include <curl/curl.h>
 
 #include "tsPCO.h"
 // extern "C"{
@@ -47,9 +50,11 @@ class PCOcam
     WORD camtype;
     DWORD serialnumber;
 
-    short ccdtemp = 0;
-    short camtemp = 0;
-    short pstemp = 0;
+    signed short ccdtemp = 0;
+    signed short camtemp = 0;
+    signed short pstemp = 0;
+
+    unsigned int warnings, errors, camStatusVal;
 
     WORD wRoiX0, wRoiY0, wRoiX1, wRoiY1;
     WORD binhorz,binvert;
@@ -65,13 +70,23 @@ class PCOcam
     DWORD exp_time = 1000;
     DWORD delay_time = 0;
 
+
+    std::promise<void> exitSignalCurlThread;
+    std::future<void> futCurl;
+    std::thread curlTempWriterThread;
+    // void curlInfluxWriter(int camNumber, std::future<void> exitSignal);
+    void curlInfluxWriter(int camNumber);
+
+    std::mutex curlWriteMut;
+    std::condition_variable curlCond;
+    bool curlWriteReady = false;
+
     private:
 
     int PicTimeOut = 500;
     SC2_Camera_Description_Response description;
     char infostr[100];
 
-    
     //set camera timebase to us
     DWORD pixelrate;
     WORD exp_timebase = 1;
@@ -80,7 +95,11 @@ class PCOcam
     WORD act_recstate, act_align;
     WORD triggermode;
 
+    // private:
 
 };
+
+void pcoControlThread(PCOcam * camObj, camThreadSettings settings, std::future<void> exitSignal);
+void pcoMGRThread(std::unique_ptr<mgrThreadLock> lock, std::future<void> exitSignal);
 
 #endif

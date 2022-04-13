@@ -3,6 +3,8 @@
 
 #include <string>
 #include <iostream>
+#include <mutex>
+#include <condition_variable>
 
 // extern "C"{
 #include "VersionNo.h"
@@ -59,6 +61,22 @@ struct  camExpSettings
     DWORD dwExposure;
     WORD wTimeBaseDelay;
     WORD wTimeBaseExposure;
+};
+
+struct camThreadSettings
+{
+    std::string logFileName;
+    
+    unsigned int tempReadTimeout;
+    unsigned int initBinning;
+
+};
+
+struct mgrThreadLock
+{
+    std::mutex mm;
+    std::condition_variable cond;
+    bool mgrRunning;
 };
 
 #endif
