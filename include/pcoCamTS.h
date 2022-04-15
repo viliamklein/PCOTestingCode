@@ -9,7 +9,9 @@
 // #include <fmt/format.h>
 #include <future>
 #include <curl/curl.h>
+#include <optional>
 
+#include "threadSafeQueue.h"
 #include "tsPCO.h"
 // extern "C"{
 
@@ -22,6 +24,9 @@
 #include "PCO_errt.h"
 
 // }
+#define PCOIDLE_STATE 0
+#define PCOINITREC_STATE 1
+#define PCORECNTRD_STATE 2
 
 
 // struct frameBuffer {
@@ -39,6 +44,11 @@ class PCOcam
 
     void getTemperature();
     void processErrVal();
+    WORD updateExposureSettings();
+
+    unsigned int stateMachineState = PCOIDLE_STATE;
+    bool stateChange = false;
+    bool recordingState = false;
     
     DWORD err = 0;
     std::string errMsg;
@@ -70,6 +80,7 @@ class PCOcam
     DWORD exp_time = 1000;
     DWORD delay_time = 0;
 
+    camExpSettings cameraExposureSettings;
 
     std::promise<void> exitSignalCurlThread;
     std::future<void> futCurl;
@@ -95,11 +106,13 @@ class PCOcam
     WORD act_recstate, act_align;
     WORD triggermode;
 
-    // private:
-
 };
 
-void pcoControlThread(PCOcam * camObj, camThreadSettings settings, std::future<void> exitSignal);
+void pcoControlThread(PCOcam * camObj, 
+                      camThreadSettings settings,
+                      ThreadsafeQueue<std::string, 10> * cmdQue,
+                      std::future<void> exitSignal);
 void pcoMGRThread(std::unique_ptr<mgrThreadLock> lock, std::future<void> exitSignal);
 
+std::vector<std::string> split(const std::string &s, char delim);
 #endif

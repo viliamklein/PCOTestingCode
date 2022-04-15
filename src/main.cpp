@@ -14,6 +14,8 @@
 #include <chrono>
 #include <thread>
 
+#include "threadSafeQueue.h"
+
 // #include <InfluxDBFactory.h>
 
 #define PCO_ERRT_H_CREATE_OBJECT
@@ -49,21 +51,34 @@ int main(int argc, char *argv[]){
     std::unique_lock<std::mutex> lk{mgrLock.mm};
     while (!mgrLock.mgrRunning) mgrLock.cond.wait(lk);
     
+    //==============================================//
+    // Start PCO threads
+    //==============================================//
     // PCOcam cam0(0);
     PCOcam cam1(0);
+
+    ThreadsafeQueue<std::string, 10> pcoCam1cmds;
+    
     camThreadSettings cam1Settings;
     cam1Settings.tempReadTimeout = 5000;
-
     //setup up PCO thread with future/promise kill pattern
     std::promise<void> exitSignalPCO1;
     std::future<void> futPCOThread1 = exitSignalPCO1.get_future();
-    std::thread pcoThreadCam1(pcoControlThread, &cam1, cam1Settings, std::move(futPCOThread1));
+    std::thread pcoThreadCam1(pcoControlThread, &cam1, cam1Settings, &pcoCam1cmds, std::move(futPCOThread1));
 
 
     // std::this_thread::sleep_for(std::chrono::milliseconds(26000));
 
-    std::string line;
-    std::getline(std::cin, line); 
+    // for(int ii=0; ii<5; ii++){
+    for(;;){
+        std::string line;
+        std::getline(std::cin, line);
+
+        pcoCam1cmds.push(line);
+
+        if(line == "x") break;
+    }
+
 
     // cam0.camera->PCO_SetRecordingState(1);
     // cam0.err = cam0.grabber->Start_Acquire();

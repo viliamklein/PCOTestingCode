@@ -56,6 +56,7 @@ struct  camExpSettings
     WORD wFrameRateStatus;
     DWORD dwFrameRate;
     DWORD dwFrameRateExposure;
+    WORD wFrameRateMode;
 
     DWORD dwDelay;
     DWORD dwExposure;

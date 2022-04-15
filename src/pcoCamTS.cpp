@@ -56,19 +56,137 @@ int tempTimeoutTask(int delay){
     return 1;
 }
 
-void pcoControlThread(PCOcam * camObj, camThreadSettings settings, std::future<void> exitSignal){
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> result;
+    std::stringstream ss (s);
+    std::string item;
+
+    while (getline (ss, item, delim)) {
+        result.push_back (item);
+    }
+
+    return result;
+}
+
+
+void pcoControlThread(PCOcam * camObj, 
+                      camThreadSettings settings,
+                      ThreadsafeQueue<std::string, 10> * cmdQue,
+                      std::future<void> exitSignal){
 
     std::cout << "PCO cam thread\n";
+    std::optional<std::string> cmdString;
 
-    // int tempDelayTimeout = settings.tempReadTimeout;
+    //================================//
+    // Launch async status and temperature checking timeout
+    //================================//
     auto tempTimeout = std::async(std::launch::async, tempTimeoutTask, settings.tempReadTimeout);
     
+    //================================//
+    // Main running loop that waits for exit signal to kill thread
+    //================================//
     while (exitSignal.wait_for(std::chrono::microseconds(1)) == std::future_status::timeout){
 
-        // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        // std::cout << "Tick\n";
+        switch (camObj->stateMachineState)
+        {
+        case PCOIDLE_STATE:
+            if(camObj->stateChange){
+                std::cout << "PCO state changed to PCOIDLE_STATE\n";
+                camObj->stateChange = false;
+                
+                camObj->err = camObj->camera->PCO_SetRecordingState(false);
+                if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
 
-        // auto tempRead
+                camObj->err = camObj->grabber->Stop_Acquire();
+                if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
+            }
+
+            break;
+        
+        case PCOINITREC_STATE:
+            if(camObj->stateChange){
+                std::cout << "PCO state changed to PCOINITREC_STATE\n";
+                camObj->stateChange = false;
+
+                camObj->err = camObj->camera->PCO_ArmCamera();
+                if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
+                
+                camObj->err = camObj->camera->PCO_SetRecordingState(true);
+                if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
+
+                camObj->err = camObj->grabber->Start_Acquire();
+                if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
+            }
+
+            // grab frame. Do nothing. yet
+            camObj->err = camObj->grabber->Wait_For_Next_Image(camObj->picBuf->at(0).picbuf, 500);
+
+            break;
+        default:
+            break;
+        }
+        
+        //==============================================//
+        // Check if there's a command to process
+        //==============================================//
+        cmdString = cmdQue->pop();
+        if(cmdString){
+
+            std::string stringVal = cmdString.value();
+            std::vector<std::string> vecStrings = split(stringVal, ' ');
+
+            if(vecStrings[0].find("exposure") != std::string::npos){
+                
+                DWORD expCmdTime;
+                std::cout << "exp command" << "\n";
+                
+                expCmdTime = std::atoi(vecStrings[1].c_str());
+                camObj->cameraExposureSettings.dwFrameRateExposure = expCmdTime;
+                camObj->cameraExposureSettings.wFrameRateMode = 0x0002; // prioritize exposure, not frame rate
+                camObj->updateExposureSettings();
+
+            }
+
+            else if(vecStrings[0].find("framerate") != std::string::npos){
+                
+                DWORD frameRateCmdTime;
+                std::cout << "framerate command" << "\n";
+                
+                frameRateCmdTime = std::atoi(vecStrings[1].c_str());
+                camObj->cameraExposureSettings.dwFrameRate = frameRateCmdTime;
+                camObj->cameraExposureSettings.wFrameRateMode = 0x0001; // prioritize frame rate, not exposure
+                camObj->updateExposureSettings();
+
+            }
+
+            else if (vecStrings[0].find("state") != std::string::npos)
+            {
+                /* code */
+                // std::cout << "state change set to: " << vecStrings[1] << "\n";
+                unsigned int stateCmdVal = std::atoi(vecStrings[1].c_str());
+                switch (stateCmdVal)
+                {
+                case PCOIDLE_STATE:
+                    /* code */
+                    camObj->stateChange = true;
+                    camObj->stateMachineState = PCOIDLE_STATE;
+                    break;
+                    
+                case PCOINITREC_STATE:
+                    /* code */
+                    camObj->stateChange = true;
+                    camObj->stateMachineState = PCOINITREC_STATE;
+                    break;
+                
+                default:
+                    break;
+                }
+
+            }
+            
+
+            // std::cout << cmdString.value() << "\n";
+        }
         
         //==============================================//
         // Check if it's time to read PCO temperature. 
@@ -119,6 +237,7 @@ void PCOcam::curlInfluxWriter(int camNumber){
     CURL *curl;
     CURLcode res;
 
+    // need to make these things read from the settings file. 
     std::string urldb = "http://localhost:8086/api/v2/write?org=thaispice&bucket=vn300Testing&precision=ns";
     std::string authHeader = "Authorization: Token FzANVq9O0CVYN4iHQivNgchUsZhM6HbomP0HuXHKuv5Xp11Xcyb5pEIuZbXnpOqSGfqEc03eel_cS9euGBTPxw==";
     std::string contHeader = "Content-Type: text/plain; charset=utf-8";
@@ -133,14 +252,23 @@ void PCOcam::curlInfluxWriter(int camNumber){
     std::string measTags = line.str();
     line.str(std::string());
 
-
+    //================================//
+    // Main running loop that waits for exit signal to kill thread
+    //================================//
     while (futCurl.wait_for(std::chrono::microseconds(1)) == std::future_status::timeout){
 
+        //================================//
+        // Wait on cond variable that is set in the main PCO thread. 
+        // should be set repeatedly at some given interval
+        //================================//
         std::unique_lock<std::mutex> lck(curlWriteMut);
         if(curlCond.wait_for(lck, std::chrono::microseconds(1), [this]{return curlWriteReady;})){
             // std::cout << "Curl writing data\n";
             curlWriteReady = false;
 
+            //================================//
+            // Make influxdb line protocol data for temperature and status
+            //================================//
             auto now = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now());
             line << measTags
                  << " ccdtemp=" << ccdtemp/10.0
@@ -151,12 +279,13 @@ void PCOcam::curlInfluxWriter(int camNumber){
                  << ",camStatusVal=" << camStatusVal
                  << " " << now.time_since_epoch().count() << "\n";
                 
-            // std::cout << line.str() << std::endl;
             fullDataStr = line.str();
             line.str("");
             line.clear();
-            // std::cout << fullDataStr;
-            
+
+            //================================//
+            // use libCurl to write to influxdb on flight comp
+            //================================//
             curl = curl_easy_init();
             if(curl){
 
@@ -192,14 +321,29 @@ void PCOcam::curlInfluxWriter(int camNumber){
 
 }
 
+WORD PCOcam::updateExposureSettings(void){
+
+    camera->PCO_SetFrameRate(&cameraExposureSettings.wFrameRateStatus,
+                             cameraExposureSettings.wFrameRateMode,
+                             &cameraExposureSettings.dwFrameRate,
+                             &cameraExposureSettings.dwFrameRateExposure);
+    
+    if(recordingState==false){
+        err = camera->PCO_ArmCamera();
+        if(err!=PCO_NOERROR) processErrVal();
+    }
+
+    return cameraExposureSettings.wFrameRateStatus;
+}
 
 PCOcam::PCOcam(int camNumber){
 
     futCurl = exitSignalCurlThread.get_future();
     curlTempWriterThread = std::thread(&PCOcam::curlInfluxWriter, this, camNumber);
-    // std::thread PCOCamThread()
     
-    // using namespace std::chrono_literals;
+    cameraExposureSettings.dwFrameRate = 100000; // 100,00 mHz, should be 100 Hz
+    cameraExposureSettings.dwFrameRateExposure = 1000000; // 1ms, should be 1E6 ns.
+    cameraExposureSettings.wFrameRateMode = 0x0002;
 
     // DWORD logLvL = 0x0000F0FF;
     // DWORD logLvL = 0;
@@ -287,7 +431,7 @@ PCOcam::PCOcam(int camNumber){
     if(err!=PCO_NOERROR) processErrVal();
 
     //set RecordingState to STOP
-    err=camera->PCO_SetRecordingState(0);
+    err=camera->PCO_SetRecordingState(recordingState);
     // if(err!=PCO_NOERROR) printf("PCO_SetRecordingState() Error 0x%x\n",err);
     if(err!=PCO_NOERROR) processErrVal();
 
