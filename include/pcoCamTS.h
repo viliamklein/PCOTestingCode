@@ -13,6 +13,7 @@
 
 #include "threadSafeQueue.h"
 #include "tsPCO.h"
+#include "networkingControl.h"
 // extern "C"{
 
 #include "VersionNo.h"
@@ -20,7 +21,7 @@
 #include "Cpco_grab_clhs.h"
 #include "file12.h"
 #include "Ccambuf.h"
-#include "Cpcodisp.h"
+// #include "Cpcodisp.h"
 #include "PCO_errt.h"
 
 // }
@@ -33,6 +34,9 @@
 //     WORD * picbuf;
 //     int xx;
 // };
+
+
+std::string printErrorMessage(DWORD errorValue);
 
 class PCOcam
 {

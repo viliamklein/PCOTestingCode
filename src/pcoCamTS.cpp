@@ -1,5 +1,17 @@
 #include "pcoCamTS.h"
 
+std::string printErrorMessage(DWORD errorValue)
+{
+  char *cstr = new char[1000];
+  std::string errorOut;
+  PCO_GetErrorText(errorValue, cstr, 1000);
+  
+  errorOut = cstr;
+  std::cerr << errorOut << std::endl;
+
+    return errorOut;
+}
+
 void pcoMGRThread(std::unique_ptr<mgrThreadLock> lock, std::future<void> exitSignal){
 
     char outputBuffer[256];
@@ -68,7 +80,6 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return result;
 }
 
-
 void pcoControlThread(PCOcam * camObj, 
                       camThreadSettings settings,
                       ThreadsafeQueue<std::string, 10> * cmdQue,
@@ -76,6 +87,25 @@ void pcoControlThread(PCOcam * camObj,
 
     std::cout << "PCO cam thread\n";
     std::optional<std::string> cmdString;
+
+    std::chrono::high_resolution_clock::time_point recStart, frameTime;
+    std::chrono::high_resolution_clock::duration ftdelta;
+    
+    //================================//
+    // Launch networking thread to send images down
+    //================================//
+    ThreadsafeQueue<std::pair<PCOCamControlValues, std::vector<unsigned char>>, 10> pcoImgQue;
+    networkThreadConfig pcoNetImgConfig;
+
+    pcoNetImgConfig.GSEaddress = "10.40.0.29";
+    pcoNetImgConfig.port = 9998;
+
+    std::promise<void> exitSignalPCONetThread;
+    std::future<void> pcoNetFut = exitSignalPCONetThread.get_future();
+    std::thread pcoNetImagThread(PCOImagesNetworkingThread,
+                                 std::move(pcoNetFut),
+                                 &pcoImgQue,
+                                 pcoNetImgConfig);
 
     //================================//
     // Launch async status and temperature checking timeout
@@ -89,6 +119,9 @@ void pcoControlThread(PCOcam * camObj,
 
         switch (camObj->stateMachineState)
         {
+        //================================//
+        // IDLE state
+        //================================//
         case PCOIDLE_STATE:
             if(camObj->stateChange){
                 std::cout << "PCO state changed to PCOIDLE_STATE\n";
@@ -103,10 +136,16 @@ void pcoControlThread(PCOcam * camObj,
 
             break;
         
+        //================================//
+        // record state. waits for frames
+        //================================//
         case PCOINITREC_STATE:
+
             if(camObj->stateChange){
                 std::cout << "PCO state changed to PCOINITREC_STATE\n";
                 camObj->stateChange = false;
+
+                recStart = std::chrono::high_resolution_clock::now();
 
                 camObj->err = camObj->camera->PCO_ArmCamera();
                 if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
@@ -116,12 +155,31 @@ void pcoControlThread(PCOcam * camObj,
 
                 camObj->err = camObj->grabber->Start_Acquire();
                 if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
+                
+                std::cout << "Frame rate: " << camObj->cameraExposureSettings.dwFrameRate
+                          << "Frame rate exp: " << camObj->cameraExposureSettings.dwFrameRateExposure
+                          << std::endl;
+                
             }
 
-            // grab frame. Do nothing. yet
             camObj->err = camObj->grabber->Wait_For_Next_Image(camObj->picBuf->at(0).picbuf, 500);
 
+            //==============================================//
+            // Check if enough time has passed to send a frame to network
+            //==============================================//
+            frameTime = std::chrono::high_resolution_clock::now();
+            ftdelta = std::chrono::duration_cast<std::chrono::milliseconds>(frameTime - recStart);
+            if (ftdelta > std::chrono::milliseconds(settings.imageSendingTimeout)){
+                // std::cout << "here\n";
+                recStart = std::chrono::high_resolution_clock::now();
+            }
+
+            // std::cout << ftdelta.count();
+
+
+
             break;
+
         default:
             break;
         }
@@ -141,21 +199,10 @@ void pcoControlThread(PCOcam * camObj,
                 std::cout << "exp command" << "\n";
                 
                 expCmdTime = std::atoi(vecStrings[1].c_str());
-                camObj->cameraExposureSettings.dwFrameRateExposure = expCmdTime;
-                camObj->cameraExposureSettings.wFrameRateMode = 0x0002; // prioritize exposure, not frame rate
+                camObj->cameraExposureSettings.dwExposure = expCmdTime;
                 camObj->updateExposureSettings();
 
-            }
-
-            else if(vecStrings[0].find("framerate") != std::string::npos){
-                
-                DWORD frameRateCmdTime;
-                std::cout << "framerate command" << "\n";
-                
-                frameRateCmdTime = std::atoi(vecStrings[1].c_str());
-                camObj->cameraExposureSettings.dwFrameRate = frameRateCmdTime;
-                camObj->cameraExposureSettings.wFrameRateMode = 0x0001; // prioritize frame rate, not exposure
-                camObj->updateExposureSettings();
+                std::cout << "Current exposure (us): " << camObj->cameraExposureSettings.dwExposure << "\n";
 
             }
 
@@ -205,6 +252,12 @@ void pcoControlThread(PCOcam * camObj,
             }
         }
     }
+
+    //============================================//
+    // Stop Network Threads!!
+    //============================================//
+    exitSignalPCONetThread.set_value();
+    pcoNetImagThread.join();
 
     std::cout << "PCO thread Done" << std::endl;
 
@@ -323,15 +376,23 @@ void PCOcam::curlInfluxWriter(int camNumber){
 
 WORD PCOcam::updateExposureSettings(void){
 
-    camera->PCO_SetFrameRate(&cameraExposureSettings.wFrameRateStatus,
-                             cameraExposureSettings.wFrameRateMode,
-                             &cameraExposureSettings.dwFrameRate,
-                             &cameraExposureSettings.dwFrameRateExposure);
+    err = camera->PCO_SetDelayExposureTime(cameraExposureSettings.dwDelay,
+                                           cameraExposureSettings.dwExposure,
+                                           cameraExposureSettings.wTimeBaseDelay,
+                                           cameraExposureSettings.wTimeBaseExposure);
+    if(err!=PCO_NOERROR) processErrVal();
     
     if(recordingState==false){
+        std::cout << "rec state is false\n";
         err = camera->PCO_ArmCamera();
         if(err!=PCO_NOERROR) processErrVal();
     }
+
+    err = camera->PCO_GetDelayExposureTime(&cameraExposureSettings.dwDelay,
+                                           &cameraExposureSettings.dwExposure,
+                                           &cameraExposureSettings.wTimeBaseDelay,
+                                           &cameraExposureSettings.wTimeBaseExposure);
+    if(err!=PCO_NOERROR) processErrVal();
 
     return cameraExposureSettings.wFrameRateStatus;
 }
@@ -344,6 +405,11 @@ PCOcam::PCOcam(int camNumber){
     cameraExposureSettings.dwFrameRate = 100000; // 100,00 mHz, should be 100 Hz
     cameraExposureSettings.dwFrameRateExposure = 1000000; // 1ms, should be 1E6 ns.
     cameraExposureSettings.wFrameRateMode = 0x0002;
+
+    cameraExposureSettings.dwDelay = 0;
+    cameraExposureSettings.wTimeBaseDelay = 0;
+    cameraExposureSettings.dwExposure = 10000; // 10,000 ms default exposure
+    cameraExposureSettings.wTimeBaseExposure = 1; // set to us. 
 
     // DWORD logLvL = 0x0000F0FF;
     // DWORD logLvL = 0;
@@ -445,11 +511,16 @@ PCOcam::PCOcam(int camNumber){
     if(err!=PCO_NOERROR) processErrVal();
 
 
-    err=camera->PCO_SetTimebase(del_timebase,exp_timebase);
+    err=camera->PCO_SetTimebase(cameraExposureSettings.wTimeBaseDelay,
+                                cameraExposureSettings.wTimeBaseExposure);
     // if(err!=PCO_NOERROR) printf("PCO_SetTimebase() Error 0x%x\n",err);
     if(err!=PCO_NOERROR) processErrVal();
 
-    err=camera->PCO_SetDelayExposure(delay_time,exp_time);
+    // err=camera->PCO_SetDelayExposure(delay_time,exp_time);
+    err=camera->PCO_SetDelayExposureTime(cameraExposureSettings.dwDelay,
+                                         cameraExposureSettings.dwExposure,
+                                         cameraExposureSettings.wTimeBaseDelay,
+                                         cameraExposureSettings.wTimeBaseExposure);
     // if(err!=PCO_NOERROR) printf("PCO_SetDelayExposure() Error 0x%x\n",err);
     if(err!=PCO_NOERROR) processErrVal();
 
@@ -489,7 +560,7 @@ PCOcam::PCOcam(int camNumber){
     err=camera->PCO_GetBitAlignment(&act_align);
     if(err!=PCO_NOERROR) processErrVal();
 
-    shift=0;
+    int shift=0;
     if(act_align!=BIT_ALIGNMENT_LSB)
     {
         shift=16-description.wDynResDESC;
@@ -498,7 +569,7 @@ PCOcam::PCOcam(int camNumber){
 
     err=camera->PCO_GetTriggerMode(&triggermode);
     if(err!=PCO_NOERROR) processErrVal();
-    else printf("actual Triggermode: %d %s\n",triggermode,tmode[triggermode]);
+    // else printf("actual Triggermode: %d %s\n",triggermode,tmode[triggermode]);
 
     err=camera->PCO_GetBinning(&binhorz,&binvert);
     if(err!=PCO_NOERROR) processErrVal();

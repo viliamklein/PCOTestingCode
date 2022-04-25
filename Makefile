@@ -10,8 +10,9 @@ PCOLIBDIR   = /home/viliam/PCO/pco_camera/pco_common/pco_lib
 CPCODIR     = /home/viliam/PCO/pco_camera/pco_common/pco_classes
 CPCODIRCLHS = /home/viliam/PCO/pco_camera/pco_clhs/pco_classes
 PCOCLHSDIR  = /home/viliam/PCO/pco_camera/pco_clhs/pco_clhs_common
+ASIOINC := /home/viliam/sources/asio-1.18.1/include/
 
-CFLAGS += -std=c++2a -Wall -DLINUX -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
+CFLAGS += -std=c++2a -Wall -DLINUX -I$(ASIOINC) -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
 LFLAGS += -L$(PCOLIBDIR)
 CXXCMD = gcc
 
@@ -26,17 +27,17 @@ HEADERS = 	$(CPCODIR)/Cpco_com.h \
 			$(CPCODIRCLHS)/Cpco_grab_clhs.h \
 			$(CPCODIRCLHS)/Cpco_com_clhs.h \
 			$(PCODIR)/PCO_errt.h \
-			$(INC_DIR)/tsPCO.h
+			$(INC_DIR)/tsPCO.h \
+			$(INC_DIR)/ImageMessages.pb.h
 
 CPPFLAGS := -Iinclude
 
 PCOLIB  = -lpcodisp -lpcofile -lpcocam_clhs -lpcoclhs
-LIBADD  = -lInfluxDB -lcurl -pthread -lrt -ldl -lX11 -lXext
-
+LIBADD  = -lInfluxDB -lcurl -lprotobuf -pthread  -lrt -ldl -lX11 -lXext
 #==============================================#
 
 # EXE := $(BIN_DIR)/PCO_test
-SRC := $(wildcard $(SRC_DIR)/*.cpp)
+SRC := $(wildcard $(SRC_DIR)/*.cpp )
 OBJ := $(SRC:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 EXECUTABLE  := $(BIN_DIR)/pcoTesting
 EXECUTABLE_DEBUG  := $(BIN_DIR)/pcoTesting_debug

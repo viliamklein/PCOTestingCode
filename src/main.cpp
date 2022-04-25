@@ -13,6 +13,7 @@
 #include <fstream>
 #include <chrono>
 #include <thread>
+#include <asio.hpp>
 
 #include "threadSafeQueue.h"
 
@@ -61,11 +62,13 @@ int main(int argc, char *argv[]){
     
     camThreadSettings cam1Settings;
     cam1Settings.tempReadTimeout = 5000;
+    cam1Settings.imageSendingTimeout = 200;
     //setup up PCO thread with future/promise kill pattern
     std::promise<void> exitSignalPCO1;
     std::future<void> futPCOThread1 = exitSignalPCO1.get_future();
     std::thread pcoThreadCam1(pcoControlThread, &cam1, cam1Settings, &pcoCam1cmds, std::move(futPCOThread1));
 
+    // cam1.camera->PCO_SetTimestampMode
 
     // std::this_thread::sleep_for(std::chrono::milliseconds(26000));
 
@@ -79,6 +82,28 @@ int main(int argc, char *argv[]){
         if(line == "x") break;
     }
 
+    //===============================================//
+	// ASIO sending
+	//===============================================//
+    /*
+	asio::io_context io_context;
+	asio::error_code error;
+
+	std::stringstream gseport;
+	gseport << 9998;
+
+	asio::ip::tcp::resolver ipres(io_context);
+	auto endpoints = ipres.resolve("10.40.0.69", gseport.str());
+	asio::ip::tcp::socket socket(io_context);
+    asio::connect(socket, endpoints, error);
+
+	asio::socket_base::send_buffer_size option(0x8000);
+	socket.set_option(option);
+
+    socket.send(asio::buffer("testing PCO Connection"));
+
+	io_context.stop();
+    */
 
     // cam0.camera->PCO_SetRecordingState(1);
     // cam0.err = cam0.grabber->Start_Acquire();
