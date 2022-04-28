@@ -37,7 +37,8 @@ void PCOImagesNetworkingThread(std::future<void> exitSignal,
     {
 		imgData = imgQue->pop();
 		if (imgData) {
-
+			std::cout << "got frame" << std::endl;
+			
             frameToSend.set_header(0xAAAAAAAA);
             frameToSend.set_id(0);
 			// frameToSend.set_bitdepth(16);
@@ -46,12 +47,14 @@ void PCOImagesNetworkingThread(std::future<void> exitSignal,
             
             frameToSend.set_width(imgData->first.width);
             frameToSend.set_height(imgData->first.height);
-            frameToSend.set_messagebytelength(35+imgData->first.imgSize);
+            frameToSend.set_messagebytelength(30+imgData->first.imgSize);
             std::string strData(imgData->second.begin(), imgData->second.end());
             frameToSend.set_imagedata(strData);
 
 			frameToSend.AppendToString(&sendBuffer);
 			socket.send(asio::buffer(sendBuffer));
+
+			std::cout << "SendBuffer Size: " << sendBuffer.size() << std::endl;
 
 			sendBuffer = "";
 			std::cout << "Got frame. Que size: " << (int) imgQue->size() << " Frame num: " << (int) counter << "\n";

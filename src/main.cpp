@@ -62,7 +62,7 @@ int main(int argc, char *argv[]){
     
     camThreadSettings cam1Settings;
     cam1Settings.tempReadTimeout = 5000;
-    cam1Settings.imageSendingTimeout = 200;
+    cam1Settings.imageSendingTimeout = 500;
     //setup up PCO thread with future/promise kill pattern
     std::promise<void> exitSignalPCO1;
     std::future<void> futPCOThread1 = exitSignalPCO1.get_future();
@@ -272,6 +272,9 @@ int main(int argc, char *argv[]){
 std::string exec(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
+
+    std::cout << cmd << std::endl;
+    
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
     if (!pipe) {
         throw std::runtime_error("popen() failed!");

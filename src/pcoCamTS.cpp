@@ -95,7 +95,12 @@ void pcoControlThread(PCOcam * camObj,
     // Launch networking thread to send images down
     //================================//
     ThreadsafeQueue<std::pair<PCOCamControlValues, std::vector<unsigned char>>, 10> pcoImgQue;
+    std::pair<PCOCamControlValues, std::vector<unsigned char>> queData;
+    PCOCamControlValues camCtrlVals;
+    std::vector<unsigned char> imgWordData(2048*2048*2);
+
     networkThreadConfig pcoNetImgConfig;
+    int netsendcount = 0;
 
     pcoNetImgConfig.GSEaddress = "10.40.0.29";
     pcoNetImgConfig.port = 9998;
@@ -142,10 +147,15 @@ void pcoControlThread(PCOcam * camObj,
         case PCOINITREC_STATE:
 
             if(camObj->stateChange){
+
                 std::cout << "PCO state changed to PCOINITREC_STATE\n";
                 camObj->stateChange = false;
 
                 recStart = std::chrono::high_resolution_clock::now();
+
+                camCtrlVals.expSettings = camObj->cameraExposureSettings;
+                camCtrlVals.width = camObj->width;
+                camCtrlVals.height = camObj->height;
 
                 camObj->err = camObj->camera->PCO_ArmCamera();
                 if(camObj->err!=PCO_NOERROR) camObj->processErrVal();
@@ -162,21 +172,51 @@ void pcoControlThread(PCOcam * camObj,
                 
             }
 
-            camObj->err = camObj->grabber->Wait_For_Next_Image(camObj->picBuf->at(0).picbuf, 500);
+            //==============================================//
+            // Get new frame
+            //==============================================//
+            frameTime = std::chrono::high_resolution_clock::now();
+            // camObj->err = camObj->grabber->Wait_For_Next_Image(camObj->picBuf->at(0).picbuf, 500);
+            // std::vector
+            camObj->err = camObj->grabber->Wait_For_Next_Image(&imgWordData[0], 500);
 
             //==============================================//
             // Check if enough time has passed to send a frame to network
             //==============================================//
-            frameTime = std::chrono::high_resolution_clock::now();
             ftdelta = std::chrono::duration_cast<std::chrono::milliseconds>(frameTime - recStart);
             if (ftdelta > std::chrono::milliseconds(settings.imageSendingTimeout)){
-                // std::cout << "here\n";
+                
+                std::cout << "sending image to network\n";
                 recStart = std::chrono::high_resolution_clock::now();
+
+                camCtrlVals.sensorTemp = camObj->pstemp;
+                camCtrlVals.timeOfExp = frameTime;
+
+                queData.first = camCtrlVals;
+                queData.first.imgSize = 2048*2048*sizeof(WORD);
+
+                // std::vector<unsigned char> imgdata;
+                // imgdata.resize(queData.first.imgSize);
+                // std::copy(imgWordData.begin(),
+                //           imgWordData.end(),
+                //           imgdata.begin());
+
+
+                queData.second.insert(queData.second.begin(), 
+                                      imgWordData.begin(),
+                                      imgWordData.end());
+                
+                pcoImgQue.push(queData);
+                std::cout << "Pused image to net" << std::endl;
+                queData.second.clear();
+
+                netsendcount++;
+                if (netsendcount > 200){
+                    netsendcount = 0;
+                    camObj->stateChange = true;
+                    camObj->stateMachineState = PCOIDLE_STATE;
+                }
             }
-
-            // std::cout << ftdelta.count();
-
-
 
             break;
 
@@ -201,6 +241,7 @@ void pcoControlThread(PCOcam * camObj,
                 expCmdTime = std::atoi(vecStrings[1].c_str());
                 camObj->cameraExposureSettings.dwExposure = expCmdTime;
                 camObj->updateExposureSettings();
+                camCtrlVals.expSettings = camObj->cameraExposureSettings;
 
                 std::cout << "Current exposure (us): " << camObj->cameraExposureSettings.dwExposure << "\n";
 
@@ -414,7 +455,7 @@ PCOcam::PCOcam(int camNumber){
     // DWORD logLvL = 0x0000F0FF;
     // DWORD logLvL = 0;
     std::stringstream ss;
-    ss << "PCOLogCam_" << camNumber;
+    // ss << "PCOLogCam_" << camNumber;
     std::string logname(ss.str());
     std::cout << ss.str() << std::endl;
     // std::string logname("pcoLogCam" + camNumber);
@@ -437,7 +478,34 @@ PCOcam::PCOcam(int camNumber){
     {
         // printf("ERROR: 0x%x in Open_Cam\n",err);
         errMsg = printErrorMessage(err);
-        throw std::runtime_error(errMsg);
+
+        if( (err & PCO_ERROR_LAYER_MASK) == PCO_ERROR_DRIVER){
+            std::cout << "\nResetting cameras due to driver error\n";
+
+            std::string getGPIOcmd("/usr/bin/./ssh -i /home/viliam/.ssh/id_rsa pi@10.40.0.37 '/usr/sbin/i2cget -y 1 0x3F'  ");
+            std::cout << "\n" << getGPIOcmd.c_str() << std::endl;
+            std::string res = exec(getGPIOcmd.c_str());
+            unsigned char powerStatus = std::atoi(res.c_str());
+            unsigned char camMask = 0;
+            if(camNumber==0) camMask = 0x40;
+            else camMask = 0x80;
+
+            std::stringstream turnOffCommand;
+            turnOffCommand << "/usr/bin/./ssh -i /home/viliam/.ssh/id_rsa pi@10.40.0.37 '/usr/sbin/i2cset -y 1 0x3F 0x"
+                           << std::hex << (powerStatus & camMask) << "'";
+            res = exec(turnOffCommand.str().c_str());
+
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::stringstream turnOnCommand;
+            turnOnCommand << "/usr/bin/./ssh -i /home/viliam/.ssh/id_rsa pi@10.40.0.37 '/usr/sbin/i2cset -y 1 0x3F 0x"
+                          << std::hex << (powerStatus | camMask) << "'";
+            res = exec(turnOnCommand.str().c_str());
+
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            err = camera->Open_Cam(camNumber);
+            if(err!=PCO_NOERROR) printErrorMessage(err);
+        }
+        else throw std::runtime_error(errMsg);
     }
 
     // Get camera type

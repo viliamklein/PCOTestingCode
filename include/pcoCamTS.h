@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+#include <iomanip>
 // #include <fmt/format.h>
 #include <future>
 #include <curl/curl.h>
@@ -35,6 +36,7 @@
 //     int xx;
 // };
 
+extern std::string exec(const char* cmd);
 
 std::string printErrorMessage(DWORD errorValue);
 
@@ -79,7 +81,7 @@ class PCOcam
     std::vector<frameBuffer > picBuf2048;
     std::vector<frameBuffer > picBuf1024;
     std::vector<frameBuffer > * picBuf;
-    int numBufs = 100;
+    int numBufs = 10;
     
     DWORD exp_time = 1000;
     DWORD delay_time = 0;
