@@ -1,0 +1,16 @@
+configName = "PCO Config for Desk"
+
+[networking]
+GSEaddress = "10.40.0.29"
+GSEportWide = 9998
+GSEportNarrow = 9997
+
+[PCOtimeouts]
+imageSendingTimeout = 200
+tempReadTimeout = 5000
+
+[ASIFITS]
+saveFrames = false
+namePrefix = "outideHangar"
+filePath = "/home/viliam/fitsFiles/ASIcam/Mar03_2022/"
+sendDelayms = 300

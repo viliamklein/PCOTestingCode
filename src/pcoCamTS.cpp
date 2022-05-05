@@ -1,4 +1,10 @@
+#include <iostream>
 #include "pcoCamTS.h"
+#include "networkingControl.h"
+
+// extern void PCOImagesNetworkingThread(std::future<void> exitSignal,
+//         ThreadsafeQueue<std::pair<PCOCamControlValues, std::vector<unsigned char>>, IMGQUEMAXLEN> *imgQue,
+//         networkThreadConfig configInfo);
 
 std::string printErrorMessage(DWORD errorValue)
 {
@@ -102,8 +108,8 @@ void pcoControlThread(PCOcam * camObj,
     networkThreadConfig pcoNetImgConfig;
     int netsendcount = 0;
 
-    pcoNetImgConfig.GSEaddress = "10.40.0.29";
-    pcoNetImgConfig.port = 9998;
+    // pcoNetImgConfig.GSEaddress = "10.40.0.29";
+    // pcoNetImgConfig.port = 9998;
 
     std::promise<void> exitSignalPCONetThread;
     std::future<void> pcoNetFut = exitSignalPCONetThread.get_future();
@@ -518,7 +524,7 @@ PCOcam::PCOcam(int camNumber){
         delete camera;
         throw std::runtime_error(errMsg);
     }
-
+    std::cout << "Serial num: " << serialnumber << "\n";
     // Get cam grabber
     grabber = new CPco_grab_clhs((CPco_com_clhs*) camera);
     // if(logLvL>0) grabber->SetLog(&pcoCamLog);

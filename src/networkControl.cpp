@@ -1,4 +1,21 @@
 #include "networkingControl.h"
+// #include "tsPCO.h"
+
+
+asio::ip::tcp::socket openASIOSocket(asio::io_context & ioc,
+									 networkThreadConfig netCfg){
+	
+	asio::error_code error;
+	std::stringstream gseport;
+	gseport << netCfg.port;
+
+	asio::ip::tcp::resolver ipres(ioc);
+	auto endpoints = ipres.resolve(netCfg.GSEaddress, gseport.str());
+	asio::ip::tcp::socket socket(ioc);
+    asio::connect(socket, endpoints, error);
+
+	return socket;
+}
 
 void PCOImagesNetworkingThread(std::future<void> exitSignal,
         ThreadsafeQueue<std::pair<PCOCamControlValues, std::vector<unsigned char>>, IMGQUEMAXLEN> *imgQue,
@@ -15,15 +32,17 @@ void PCOImagesNetworkingThread(std::future<void> exitSignal,
 	// ASIO sending
 	//===============================================//
 	asio::io_context io_context;
-	asio::error_code error;
+	// asio::error_code error;
 
-	std::stringstream gseport;
-	gseport << configInfo.port;
+	// std::stringstream gseport;
+	// gseport << configInfo.port;
 
-	asio::ip::tcp::resolver ipres(io_context);
-	auto endpoints = ipres.resolve(configInfo.GSEaddress, gseport.str());
-	asio::ip::tcp::socket socket(io_context);
-    asio::connect(socket, endpoints, error);
+	// asio::ip::tcp::resolver ipres(io_context);
+	// auto endpoints = ipres.resolve(configInfo.GSEaddress, gseport.str());
+	// asio::ip::tcp::socket socket(io_context);
+	asio::ip::tcp::socket socket = openASIOSocket(io_context, configInfo);
+	bool sockStatus = true;
+    // asio::connect(socket, endpoints, error);
 
 	asio::socket_base::send_buffer_size option(0x8000);
 	socket.set_option(option);
@@ -52,16 +71,28 @@ void PCOImagesNetworkingThread(std::future<void> exitSignal,
             frameToSend.set_imagedata(strData);
 
 			frameToSend.AppendToString(&sendBuffer);
-			socket.send(asio::buffer(sendBuffer));
 
-			std::cout << "SendBuffer Size: " << sendBuffer.size() << std::endl;
+			if (socket.is_open()){
+				
+				socket.send(asio::buffer(sendBuffer));
+
+				std::cout << "SendBuffer Size: " << sendBuffer.size() << std::endl;
+			}
+			else{
+				std::cout << "Socket fail\n";
+				sockStatus = false;
+			}
 
 			sendBuffer = "";
 			std::cout << "Got frame. Que size: " << (int) imgQue->size() << " Frame num: " << (int) counter << "\n";
 			counter++;
 		}
+
+		if(!sockStatus){
+			socket.shutdown(asio::ip::tcp::socket::shutdown_both);
+			socket = openASIOSocket(io_context, configInfo);
+		}
 	}
 
 	io_context.stop();
-
 }

@@ -13,8 +13,6 @@
 #include <optional>
 
 #include "threadSafeQueue.h"
-#include "tsPCO.h"
-#include "networkingControl.h"
 // extern "C"{
 
 #include "VersionNo.h"
@@ -38,7 +36,58 @@
 
 extern std::string exec(const char* cmd);
 
-std::string printErrorMessage(DWORD errorValue);
+struct frameBuffer {
+    WORD * picbuf;
+    int xx;
+};
+
+
+struct  networkThreadConfig
+{
+	std::string GSEaddress;
+	int port;
+};
+
+struct  camExpSettings
+{
+    WORD wFrameRateStatus;
+    DWORD dwFrameRate;
+    DWORD dwFrameRateExposure;
+    WORD wFrameRateMode;
+
+    DWORD dwDelay;
+    DWORD dwExposure;
+    WORD wTimeBaseDelay;
+    WORD wTimeBaseExposure;
+};
+
+struct mgrThreadLock
+{
+    std::mutex mm;
+    std::condition_variable cond;
+    bool mgrRunning;
+};
+
+struct PCOCamControlValues
+{
+    camExpSettings expSettings;
+    int width, height;
+    long imgSize;
+    long sensorTemp;
+
+    std::chrono::system_clock::time_point timeOfExp;
+};
+
+struct camThreadSettings
+{
+    std::string logFileName;
+    
+    unsigned int tempReadTimeout;
+    unsigned int imageSendingTimeout;
+    unsigned int initBinning;
+
+    networkThreadConfig netCfg;
+};
 
 class PCOcam
 {
@@ -114,10 +163,13 @@ class PCOcam
 
 };
 
+std::string printErrorMessage(DWORD errorValue);
+
 void pcoControlThread(PCOcam * camObj, 
                       camThreadSettings settings,
                       ThreadsafeQueue<std::string, 10> * cmdQue,
                       std::future<void> exitSignal);
+
 void pcoMGRThread(std::unique_ptr<mgrThreadLock> lock, std::future<void> exitSignal);
 
 std::vector<std::string> split(const std::string &s, char delim);

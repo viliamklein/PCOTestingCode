@@ -11,8 +11,9 @@ CPCODIR     = /home/viliam/PCO/pco_camera/pco_common/pco_classes
 CPCODIRCLHS = /home/viliam/PCO/pco_camera/pco_clhs/pco_classes
 PCOCLHSDIR  = /home/viliam/PCO/pco_camera/pco_clhs/pco_clhs_common
 ASIOINC := /home/viliam/sources/asio-1.18.1/include/
+TOMLINC := /home/viliam/sources/tomlplusplus/include
 
-CFLAGS += -std=c++2a -Wall -DLINUX -I$(ASIOINC) -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
+CFLAGS += -std=c++2a -Wall -DLINUX -I$(TOMLINC) -I$(ASIOINC) -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
 LFLAGS += -L$(PCOLIBDIR)
 CXXCMD = gcc
 
@@ -27,7 +28,8 @@ HEADERS = 	$(CPCODIR)/Cpco_com.h \
 			$(CPCODIRCLHS)/Cpco_grab_clhs.h \
 			$(CPCODIRCLHS)/Cpco_com_clhs.h \
 			$(PCODIR)/PCO_errt.h \
-			$(INC_DIR)/tsPCO.h \
+			$(INC_DIR)/networkingControl.h \
+			$(INC_DIR)/pcoCamTS.h \
 			$(INC_DIR)/ImageMessages.pb.h
 
 CPPFLAGS := -Iinclude

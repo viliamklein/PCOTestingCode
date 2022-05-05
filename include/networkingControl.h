@@ -6,17 +6,15 @@
 
 #include "ImageMessages.pb.h"
 #include "threadSafeQueue.h"
-#include "tsPCO.h"
+#include "pcoCamTS.h"
+// #include "tsPCO.h"
 
 
-struct  networkThreadConfig
-{
-	std::string GSEaddress;
-	int port;
-};
 
 void PCOImagesNetworkingThread(std::future<void> exitSignal,
         ThreadsafeQueue<std::pair<PCOCamControlValues, std::vector<unsigned char>>, IMGQUEMAXLEN> *imgQue,
         networkThreadConfig configInfo);
+
+asio::ip::tcp::socket openASIOSocket(asio::io_context & ioc, networkThreadConfig netCfg);
 
 #endif
