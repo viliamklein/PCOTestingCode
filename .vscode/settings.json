@@ -67,6 +67,12 @@
         "variant": "cpp",
         "unordered_set": "cpp",
         "strstream": "cpp",
-        "complex": "cpp"
+        "complex": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "coroutine": "cpp",
+        "ranges": "cpp",
+        "stop_token": "cpp",
+        "*.ipp": "cpp"
     }
 }

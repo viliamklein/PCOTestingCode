@@ -9,7 +9,9 @@
 #include "pcoCamTS.h"
 // #include "tsPCO.h"
 
-
+void asioRxCmd( std::future<void> exitSignal, 
+                ThreadsafeQueue<std::string, 10> *cmdQue,
+                networkThreadConfig netCfg);
 
 void PCOImagesNetworkingThread(std::future<void> exitSignal,
         ThreadsafeQueue<std::pair<PCOCamControlValues, std::vector<unsigned char>>, IMGQUEMAXLEN> *imgQue,

@@ -20,13 +20,14 @@
 // #include <InfluxDBFactory.h>
 
 #define PCO_ERRT_H_CREATE_OBJECT
+// #define ASIO_STANDALONE`
 // #define _MSC_VER 1100
 
 // #include "tsPCO.h"
 #include "pcoCamTS.h"
 #include "networkingControl.h"
 
-// #define TOML_HEADER_ONLY 0
+#define TOML_HEADER_ONLY 1
 #include <toml++/toml.h>
 
 std::mutex frameStart, frameEnd;
@@ -57,20 +58,23 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
-    //setup up PCO MGR THREAD with future/promise kill pattern
-    std::promise<void> exitSignalPCO_MGR;
-    std::future<void> futPCOMGR = exitSignalPCO_MGR.get_future();
+    //==============================================//
+    // Start network command thread
+    //==============================================//
+    camThreadSettings testClientSettings;
+    testClientSettings.netCfg.GSEaddress = "10.40.0.30";
+    testClientSettings.netCfg.port = 44444;
 
-    mgrThreadLock mgrLock;
-    mgrLock.mgrRunning = true;
-    std::unique_ptr<mgrThreadLock> lockPtr(&mgrLock);
-    // std::thread pcoMGR( pcoMGRThread, std::move(lockPtr), std::move(futPCOMGR));
+    // std::promise<void> exitSignalNetCommand;
+    // std::future<void> futNetCmd = exitSignalNetCommand.get_future();
+    // ThreadsafeQueue<std::string, 10> netCmds;
+    // std::thread netCmdThread(asioRxCmd, std::move(futNetCmd), &netCmds, testClientSettings.netCfg);
 
-    // std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-    std::cout << "Main thread waiting for mgr\n";
-    std::unique_lock<std::mutex> lk{mgrLock.mm};
-    while (!mgrLock.mgrRunning) mgrLock.cond.wait(lk);
+    // std::cout << "Waiting on server test\n";
+    // std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    // netCmdThread.join();
     
+    // return 0;
     //==============================================//
     // Start PCO threads
     //==============================================//
@@ -96,7 +100,7 @@ int main(int argc, char *argv[]){
     std::future<void> futPCOThread0 = exitSignalPCO0.get_future();
     std::thread pcoThreadCam0(pcoControlThread, &cam0, cam0Settings, &pcoCam0cmds, std::move(futPCOThread0));
 
-    //setup up PCO cam 0 thread with future/promise kill pattern
+    //setup up PCO cam 1 thread with future/promise kill pattern
     std::promise<void> exitSignalPCO1;
     std::future<void> futPCOThread1 = exitSignalPCO1.get_future();
     std::thread pcoThreadCam1(pcoControlThread, &cam1, cam1Settings, &pcoCam1cmds, std::move(futPCOThread1));
@@ -117,8 +121,6 @@ int main(int argc, char *argv[]){
 
     exitSignalPCO0.set_value();
     pcoThreadCam0.join();
-
-    exitSignalPCO_MGR.set_value();
 
     std::cout << "Done\n";
     return 0;

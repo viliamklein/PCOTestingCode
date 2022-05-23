@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/bin/pcoTesting",
-            "args": [""],
+            "args": ["pcoConfigDesk.toml"],
             "stopAtEntry": true,
             "cwd": "${workspaceFolder}",
             "environment": [

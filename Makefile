@@ -13,7 +13,7 @@ PCOCLHSDIR  = /home/viliam/PCO/pco_camera/pco_clhs/pco_clhs_common
 ASIOINC := /home/viliam/sources/asio-1.18.1/include/
 TOMLINC := /home/viliam/sources/tomlplusplus/include
 
-CFLAGS += -std=c++2a -Wall -DLINUX -I$(TOMLINC) -I$(ASIOINC) -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
+CFLAGS += -std=c++2a -Wall -DLINUX -DASIO_STANDALONE -I$(TOMLINC) -I$(ASIOINC) -I$(PCODIR) -I$(CPCODIR) -I$(CPCODIRCLHS) -I$(PCOCLHSDIR)
 LFLAGS += -L$(PCOLIBDIR)
 CXXCMD = gcc
 
